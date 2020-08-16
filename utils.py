@@ -2,6 +2,7 @@ from telebot import types
 import views
 import telebot
 import config
+import sys
 
 bot = telebot.TeleBot(config.token)
 
@@ -45,7 +46,7 @@ def process_callback(query):
             config.add_item_status = 1
             bot.send_message(query.message.chat.id, 'Введите наименование товара:')
         elif (query.data.startswith('delete_item')):
-            views.delete(config.id_)
+            views.delete(config.writing_id)
             bot.send_message(query.message.chat.id, '{} {} {}'.format
                                             ('Категория', text, 'удалена'))
             bot.delete_message(query.message.chat.id, query.message.message_id)
@@ -53,37 +54,6 @@ def process_callback(query):
             config.change_item_status = 1
             id_ = int(query.data[-1])
             bot.send_message(query.message.chat.id, 'Введите новое наименование товара:')
-
-
-# @bot.callback_query_handler(lambda query: query.data.startswith('delete_item'))
-# def process_delete_callback(query):
-#     bot.answer_callback_query(query.id, text = None, show_alert = False)
-#     # bot.edit_message_reply_markup(query.message.chat.id, query.message.message_id)
-#     if (query.data[-1] != '0'):
-#         config.add_item_status = 0
-#         config.change_item_status = 0
-#         id_ = int(query.data[-1])
-#         category_name = views.get_name_by_id(id_)
-#         config.categories = ':{}:'.format(category_name)
-#         process_command(query.message, 'delete', id_)
-#     else:
-#         views.delete(config.id_)
-
-# @bot.callback_query_handler(lambda query: query.data.startswith('change_item'))
-# def process_change_callback(query):
-#     bot.answer_callback_query(query.id, text = None, show_alert = False)
-#     # bot.edit_message_reply_markup(query.message.chat.id, query.message.message_id)
-#     if (query.data[-1] != '0'):
-#         config.add_item_status = 0
-#         config.change_item_status = 0
-#         id_ = int(query.data[-1])
-#         category_name = views.get_name_by_id(id_)
-#         config.categories = ':{}:'.format(category_name)
-#         process_command(query.message, 'change', id_)
-#     else:
-#         config.change_item_status = 1
-#         id_ = int(query.data[-1])
-#         bot.send_message(query.message.chat.id, 'Введите новое наименование товара:')
 
 # @bot.message_handler(commands=['rename'])
 # def change_username(message):
@@ -113,7 +83,7 @@ def demote(message):
 
 def process_command(message, command, level):
     properties = config.properties[command]
-    config.id_ = level
+    config.writing_id = level
     all_items = views.get_immed_heirs(level)
     markup = generate_markup(all_items, properties[0], properties[1], level)
     message_ = properties[2] if level == 1 else message.text + config.categories
@@ -138,22 +108,64 @@ def clear(message):
         bot.send_message(message.chat.id, text=message.text)
 
 
+@bot.message_handler(func=lambda message: views.check_id(message.chat.id), content_types=['text'])
+def process_text(message):
+    if (config.add_item_status == 1):
+        config.add_item_status = 2
+        config.name = message.text
+        bot.send_message(message.chat.id, text='Введите количество:')
+    elif (config.add_item_status == 2):
+        config.add_item_status = 0
+        config.amount = int(message.text)
+        parent_name = views.add(config.name, config.amount, config.writing_id)
+        bot.send_message(message.chat.id, 
+        text= '{}: {}({})::{}'.format('Добавлен товар', config.name, parent_name, config.amount))
+
+    elif (config.change_item_status == 1):
+        config.change_item_status = 2
+        config.name = message.text
+        bot.send_message(message.chat.id, text='Введите новое количество:')
+    elif (config.change_item_status == 2):
+        config.change_item_status = 0
+        config.amount = int(message.text)
+        prev_item = views.change(config.name, config.amount, config.writing_id)
+        parent_name = views.get_name_by_id(prev_item.parent_id)
+        bot.send_message(message.chat.id, 
+        text= '{}: {}({})::{} {} {}({})::{}'.format('Товар изменен c', 
+                        prev_item.name, parent_name, prev_item.amount,
+                        'на', config.name, parent_name, config.amount))
+
+    else:
+        bot.send_message(message.chat.id, text=message.text)
+
+
 # –––––––––––––USER–––––––––––––
 
-# @bot.callback_query_handler(lambda query: query.data.startswith('order'))
-# def process_order_callback(query):
-#     bot.answer_callback_query(query.id, text = None, show_alert = False)
-#     bot.edit_message_reply_markup(query.message.chat.id, query.message.message_id)
-#     items = views.get_immed_heirs(query.data[-1])
-#     if (len(items) != 0):
-#         markup = generate_markup(items[:], 'order_')
-#         bot.send_message(query.message.chat.id,
-#                 text='Выберите категорию: ',
-#                 reply_markup=markup)
-#     else:
-#         bot.send_message(query.message.chat.id, text=query.message.text)
+@bot.callback_query_handler(lambda query: query.data.startswith('order'))
+def process_order_callback(query):
+    bot.answer_callback_query(query.id, text = None, show_alert = False)
+    bot.edit_message_reply_markup(query.message.chat.id, query.message.message_id)
+    id_ = int(query.data[-1])
+    config.reading_id = id_
+    items = views.get_immed_heirs(id_)
+    category_name = views.get_name_by_id(id_)
+    config.categories += ':{}:'.format(category_name)
+    message_ = query.message.text + config.categories
+    config.categories = ''
+    if (len(items) != 0):
+        config.order_item_status = 0
+        markup = generate_markup(items, 'order_', '', 1)
+        bot.send_message(query.message.chat.id,
+                text=message_,
+                reply_markup=markup)
+    else:
+        text = message_.split(sep='::', maxsplit=1)
+        config.full_category = text[1]
+        bot.edit_message_text(config.full_category, query.message.chat.id, query.message.message_id)
+        config.order_item_status = 1
+        bot.send_message(query.message.chat.id, text='Введите количество:')
 
-@bot.message_handler(commands=['start'])
+@bot.message_handler(commands=['start', 'order'])
 def start(message):
     markup = types.InlineKeyboardMarkup()
     markup.add(types.InlineKeyboardButton('Посмотреть товары', url=config.items_pictures))
@@ -166,31 +178,17 @@ def start(message):
 
 
 @bot.message_handler(func=lambda message: True, content_types=['text'])
-def process_text(message):
-    if (config.add_item_status == 1):
-        config.add_item_status = 2
-        config.name = message.text
-        bot.send_message(message.chat.id, text='Введите количество:')
-    elif (config.add_item_status == 2):
-        config.add_item_status = 0
+def process_order(message):
+    if (config.order_item_status == 1):
+        config.order_item_status = 0
         config.amount = int(message.text)
-        parent_name = views.add(config.name, config.amount, config.id_)
-        bot.send_message(message.chat.id, 
-        text= '{}: {}({})::{}'.format('Добавлен товар', config.name, parent_name, config.amount))
-
-    elif (config.change_item_status == 1):
-        config.change_item_status = 2
-        config.name = message.text
-        bot.send_message(message.chat.id, text='Введите новое количество:')
-    elif (config.change_item_status == 2):
-        config.change_item_status = 0
-        config.amount = int(message.text)
-        prev_item = views.change(config.name, config.amount, config.id_)
-        parent_name = views.get_name_by_id(prev_item.parent_id)
-        bot.send_message(message.chat.id, 
-        text= '{}: {}({})::{} {} {}({})::{}'.format('Товар изменен c', 
-                        prev_item.name, parent_name, prev_item.amount,
-                        'на', config.name, parent_name, config.amount))
-
+        try:
+            views.buy_item(config.reading_id, config.amount)
+            bot.send_message(message.chat.id, 
+            text= '{}: {} {} {}'.format('Товар', 
+                            config.full_category,
+                            'добавлен в количестве', config.amount))
+        except:
+            print(sys.exc_info()[1])
     else:
         bot.send_message(message.chat.id, text=message.text)

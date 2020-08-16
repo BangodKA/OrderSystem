@@ -101,3 +101,11 @@ def get_immed_heirs(parent_id):
     items = Goods.select().where(Goods.parent_id == parent_id)
     res = [[item.name, item.id, item.amount] for item in items]
     return res
+
+def buy_item(id_, amount_):
+    item = Goods.select().where(Goods.id == id_)[0]
+    if (item.amount < amount_):
+        raise ValueError(str.join('Этого товара осталось всего ', str(item.amount)))
+    q = (Goods.update({Goods.amount: Goods.amount - amount_}).where(Goods.id == id_))
+    q.execute()
+    update_amount(id_, -amount_)
