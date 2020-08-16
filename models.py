@@ -8,6 +8,9 @@ class BaseModel(Model):
         database = database
 
 class Goods(BaseModel):
-    item = CharField(unique=True)
-    amount = IntegerField()
-    subitems_id = ForeignKeyField('self', null=True, backref='children')
+    name = CharField()
+    amount = IntegerField(default=0)
+    parent_id = ForeignKeyField('self', null=True, backref='children')
+
+class Admins(BaseModel):
+    chat_id = CharField(unique=True)
