@@ -28,29 +28,17 @@ def check_id(chat_id):
     chat_ids = [admin.chat_id for admin in admins]
     return chat_id in chat_ids
 
-
-def get_all_items():
-    items = Goods.select()
-    all_items = [[item.name, item.id, item.amount] for item in items]
-    return all_items
-
-def update_amount(id_, amount_, add=False):
+def update_amount(id_, amount_):
     item = Goods.select().where(Goods.id == id_)[0]
-    # amount = amount_ - item.amount
     query = Goods.update({Goods.amount : Goods.amount + amount_}).where(Goods.id == id_)
     query.execute()
-    # parent_id_ = Goods.select().where(Goods.id == id_)[0].parent_id
-    # q = (Goods.update({Goods.amount: Goods.amount + amount}).where(Goods.id == parent_id_))
-    # q.execute()
-    if (item.parent_id != None and not add):
+    if (item.parent_id != None):
         update_amount(item.parent_id, amount_)
-    return item
 
 def update_name(id_, name):
-    item = Goods.select().where(Goods.id == id_)[0]
+    Goods.select().where(Goods.id == id_)[0]
     query = Goods.update({Goods.name : name}).where(Goods.id == id_)
     query.execute()
-    return item
 
 def get_full_name_by_id(id_):
     if id_ == 1:
@@ -62,23 +50,19 @@ def get_full_name_by_id(id_):
         res = item[0].name
     return res
 
-# def add_new_item_parent(parent_id):
-#     item = Goods.create(parent_id = parent_id)
-#     return item.id
-
 def add(name_, amount_, parent_id_):
     item = Goods.create(name = name_, amount = amount_, parent_id = parent_id_)
-    if (amount_ != 0):
-        update_amount(item.id, amount_)
+    if (amount_ != 0 and parent_id_ == 1):
+        update_amount(item.parent_id, amount_)
     return item.id
 
-def change(name_, amount_, id_):
+def change(id_, amount_):
     item = Goods.select().where(Goods.id == id_)[0]
-    query = Goods.update({Goods.name : name_, Goods.amount : amount_}).where(Goods.id == id_)
+    query = Goods.update({Goods.amount : amount_}).where(Goods.id == id_)
     query.execute()
     amount = amount_ - item.amount
     if (amount_ != 0):
-        update_amount(item.id, amount)
+        update_amount(item.parent_id, amount)
     return item
 
 def get_item_by_id(id_):

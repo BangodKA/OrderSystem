@@ -20,24 +20,23 @@ def add_amount(message, parent_id, name):
 
 
 def add_name(message, parent_id):
-    # views.update_name(id_, message.text)
     name = message.text
     bot.send_message(message.chat.id, text='Введите количество:')
     bot.register_next_step_handler(message, add_amount, parent_id, name)
 
 def change_name (message, id_, old_category):
-    views.update_name(id_, message.text)
-    bot.send_message(message.chat.id, text='Введите новое количество:')
-    bot.register_next_step_handler(message, change_amount, id_, old_category)
+    name = message.text
+    views.update_name(id_, name)
+    text= '{} {} {} {}'.format('Товар', old_category,
+                        'изменен на', name)
+    bot.send_message(message.chat.id, text=text)
 
 
-def change_amount(message, id_, old_category):
+def change_amount(message, id_):
     amount = int(message.text)
-    views.update_amount(id_, amount)
+    views.change(id_, amount)
     full_name = views.get_full_name_by_id(id_)
-    text= '{}: {} {} {}::{}'.format('Товар изменен c', 
-                        old_category,
-                        'на', full_name, amount)
+    text = '{} {} == {}'.format('Новое кол-во товара', full_name, amount)
     bot.send_message(message.chat.id, text=text)
 
 
@@ -52,17 +51,17 @@ def generate_markup(variants, keyboard_type, stop_button, level):
     
     return markup
 
+
+
 @bot.callback_query_handler(lambda query: 
                         query.data.startswith('add_item') or
                         query.data.startswith('delete_item') or
-                        query.data.startswith('change_item'))
+                        query.data.startswith('name_item') or
+                        query.data.startswith('amount_item'))
 def process_callback(query):
     bot.answer_callback_query(query.id, text = None, show_alert = False)
     bot.delete_message(query.message.chat.id, query.message.message_id)
 
-
-    config.add_item_status = 0
-    config.change_item_status = 0
     data = query.data.split(sep='_')
     command = data[0]
     id_ = int(data[-1])
@@ -71,19 +70,19 @@ def process_callback(query):
         process_command(query.message, command, id_)
     else:
         if (query.data.startswith('add_item')):
-            # id_ = views.add_new_item_parent(parent_id)
             bot.send_message(query.message.chat.id, 'Введите наименование товара:')
             bot.register_next_step_handler(query.message, add_name, parent_id)
         elif (query.data.startswith('delete_item')):
             category = views.get_full_name_by_id(parent_id)
             views.delete(parent_id)
             bot.send_message(query.message.chat.id, '{} {} {}'.format('Категория', category,  'удалена'))
-        elif (query.data.startswith('change_item')):
+        elif (query.data.startswith('name_item')):
             category = views.get_full_name_by_id(parent_id)
-            amount = views.get_item_by_id(parent_id).amount
-            old_category = '::'.join([category, str(amount)])
             bot.send_message(query.message.chat.id, 'Введите новое наименование товара:')
-            bot.register_next_step_handler(query.message, change_name, parent_id, old_category)
+            bot.register_next_step_handler(query.message, change_name, parent_id, category)
+        elif (query.data.startswith('amount_item')):
+            bot.send_message(query.message.chat.id, 'Введите новое количество товара:')
+            bot.register_next_step_handler(query.message, change_amount, parent_id)
 
 # @bot.message_handler(commands=['rename'])
 # def change_username(message):
@@ -113,16 +112,12 @@ def demote(message):
 
 def process_command(message, command, level):
     properties = config.properties[command]
-    config.writing_id = level
     all_items = views.get_immed_heirs(level)
     markup = generate_markup(all_items, properties[0], properties[1], level)
     message_ = properties[2] + views.get_full_name_by_id(level)
-    config.categories = ''
-    bot.send_message(message.chat.id, 
-            text=message_,
-            reply_markup=markup)
+    bot.send_message(message.chat.id, text=message_, reply_markup=markup)
 
-@bot.message_handler(commands=['add', 'delete', 'change'])
+@bot.message_handler(commands=['add', 'delete', 'name', 'amount'])
 def get_command(message):
     if (views.check_id(str(message.chat.id))):
         process_command(message, message.text[1:], 1)
@@ -135,11 +130,6 @@ def clear(message):
         views.clear_base()
         bot.send_message(message.chat.id, text='Товаров нет, но вы держитесь!')
     else:
-        bot.send_message(message.chat.id, text=message.text)
-
-
-@bot.message_handler(func=lambda message: views.check_id(message.chat.id), content_types=['text'])
-def process_text(message):
         bot.send_message(message.chat.id, text=message.text)
 
 
@@ -172,7 +162,7 @@ def process_order_callback(query):
 @bot.message_handler(commands=['start', 'order'])
 def start(message):
     markup = types.InlineKeyboardMarkup()
-    markup.add(types.InlineKeyboardButton('Посмотреть товары', url=config.items_pictures))
+    markup.add(types.InlineKeyboardButton('Посмотреть товары', url='https://vk.com/bangod'))
     markup.add(types.InlineKeyboardButton('Перейти к заказу', callback_data=('order_1')))
     bot.send_message(message.chat.id, text='Что вы хотите сделать?', reply_markup=markup)
 
