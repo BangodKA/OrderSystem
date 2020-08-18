@@ -1,11 +1,11 @@
-from models import database, Goods, Admins
+from models import database, Goods, Admins, Orders
 from datetime import date
 from random import choice, seed
 import config
 
 def create_tables():
     database.connect()
-    database.create_tables([Goods, Admins], safe=True)
+    database.create_tables([Goods, Admins, Orders], safe=True)
     Goods.create(name = '.BASE_CAT', amount = 0)
     database.close()
 
@@ -20,9 +20,8 @@ def demote_admin(chat_id):
 def get_chat_id():
     admins = Admins.select()
     chat_ids = [admin.chat_id for admin in admins]
-    config.admin_index += 1
-    config.admin_index %= len(admins)
-    return chat_ids[config.admin_index]
+    chat_id = choice(chat_ids)
+    return chat_id
 
 def check_id(chat_id):
     admins = Admins.select()
@@ -35,19 +34,43 @@ def get_all_items():
     all_items = [[item.name, item.id, item.amount] for item in items]
     return all_items
 
-def update_amount(id_, amount_):
-    parent_id_ = Goods.select().where(Goods.id == id_)[0].parent_id
-    q = (Goods.update({Goods.amount: Goods.amount + amount_}).where(Goods.id == parent_id_))
-    q.execute()
-    if (parent_id_ != None):
-        update_amount(parent_id_, amount_)
+def update_amount(id_, amount_, add=False):
+    item = Goods.select().where(Goods.id == id_)[0]
+    # amount = amount_ - item.amount
+    query = Goods.update({Goods.amount : Goods.amount + amount_}).where(Goods.id == id_)
+    query.execute()
+    # parent_id_ = Goods.select().where(Goods.id == id_)[0].parent_id
+    # q = (Goods.update({Goods.amount: Goods.amount + amount}).where(Goods.id == parent_id_))
+    # q.execute()
+    if (item.parent_id != None and not add):
+        update_amount(item.parent_id, amount_)
+    return item
 
+def update_name(id_, name):
+    item = Goods.select().where(Goods.id == id_)[0]
+    query = Goods.update({Goods.name : name}).where(Goods.id == id_)
+    query.execute()
+    return item
+
+def get_full_name_by_id(id_):
+    if id_ == 1:
+        return ''
+    item = Goods.select().where(Goods.id == id_)
+    if (item[0].parent_id.id != 1):
+        res = '{}::{}'.format(get_full_name_by_id(item[0].parent_id), item[0].name)
+    else:
+        res = item[0].name
+    return res
+
+# def add_new_item_parent(parent_id):
+#     item = Goods.create(parent_id = parent_id)
+#     return item.id
 
 def add(name_, amount_, parent_id_):
     item = Goods.create(name = name_, amount = amount_, parent_id = parent_id_)
     if (amount_ != 0):
         update_amount(item.id, amount_)
-    return Goods.select().where(Goods.id == parent_id_)[0].name
+    return item.id
 
 def change(name_, amount_, id_):
     item = Goods.select().where(Goods.id == id_)[0]
@@ -58,9 +81,9 @@ def change(name_, amount_, id_):
         update_amount(item.id, amount)
     return item
 
-def get_name_by_id(id_):
+def get_item_by_id(id_):
     item = Goods.select().where(Goods.id == id_)
-    return item[0].name
+    return item[0]
 
 def new():
     b = Goods.select().where(Goods.subitems_id != None)
@@ -92,6 +115,8 @@ def delete(id_):
 
 def clear_base():
     query = Goods.delete().where(Goods.id != 1)
+    query.execute()
+    query = Goods.update({Goods.amount: 0})
     query.execute()
 
 

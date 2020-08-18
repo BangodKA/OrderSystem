@@ -6,14 +6,49 @@ import sys
 
 bot = telebot.TeleBot(config.token)
 
+def add_amount(message, parent_id, name):
+    # try:
+        amount = int(message.text)
+        # views.update_amount(id_, amount)
+        id_ = views.add(name, amount, parent_id)
+        full_name = views.get_full_name_by_id(id_)
+        bot.send_message(message.chat.id, 
+                text= '{} {} {} {}'.format('Товар', full_name,
+                                'добавлен в количестве', amount))
+    # except:
+    #     bot.send_message(message.chat.id, text='Invalid amount')
+
+
+def add_name(message, parent_id):
+    # views.update_name(id_, message.text)
+    name = message.text
+    bot.send_message(message.chat.id, text='Введите количество:')
+    bot.register_next_step_handler(message, add_amount, parent_id, name)
+
+def change_name (message, id_, old_category):
+    views.update_name(id_, message.text)
+    bot.send_message(message.chat.id, text='Введите новое количество:')
+    bot.register_next_step_handler(message, change_amount, id_, old_category)
+
+
+def change_amount(message, id_, old_category):
+    amount = int(message.text)
+    views.update_amount(id_, amount)
+    full_name = views.get_full_name_by_id(id_)
+    text= '{}: {} {} {}::{}'.format('Товар изменен c', 
+                        old_category,
+                        'на', full_name, amount)
+    bot.send_message(message.chat.id, text=text)
+
+
 def generate_markup(variants, keyboard_type, stop_button, level):
     markup = types.InlineKeyboardMarkup()
 
     if (keyboard_type == 'add_item' or level != 1):
-        markup.add(types.InlineKeyboardButton(stop_button, callback_data=(keyboard_type + '0')))
+        markup.add(types.InlineKeyboardButton(stop_button, callback_data=('_'.join([keyboard_type, str(level), '0']))))
 
     for item in variants:
-        markup.add(types.InlineKeyboardButton('{}::{}'.format(item[0], item[-1]), callback_data=(keyboard_type + str(item[1]))))
+        markup.add(types.InlineKeyboardButton('{}::{}'.format(item[0], item[-1]), callback_data=('_'.join([keyboard_type, str(level), str(item[1])]))))
     
     return markup
 
@@ -23,37 +58,32 @@ def generate_markup(variants, keyboard_type, stop_button, level):
                         query.data.startswith('change_item'))
 def process_callback(query):
     bot.answer_callback_query(query.id, text = None, show_alert = False)
-    bot.edit_message_reply_markup(query.message.chat.id, query.message.message_id)
+    bot.delete_message(query.message.chat.id, query.message.message_id)
 
 
     config.add_item_status = 0
     config.change_item_status = 0
-    if (query.data[-1] != '0'):
-        bot.delete_message(query.message.chat.id, query.message.message_id)
-        id_ = int(query.data[-1])
-        category_name = views.get_name_by_id(id_)
-        config.categories += ':{}:'.format(category_name)
-        command = query.data.split(sep='_')[0]
+    data = query.data.split(sep='_')
+    command = data[0]
+    id_ = int(data[-1])
+    parent_id = int(data[-2])
+    if (id_ != 0):
         process_command(query.message, command, id_)
     else:
-        text = query.message.text.split(sep='::', maxsplit=1)
-        if (len(text) <= 1):
-            text = 'Базовая категория'
-        else:
-            text = text[1]
-        bot.edit_message_text(text, query.message.chat.id, query.message.message_id)
         if (query.data.startswith('add_item')):
-            config.add_item_status = 1
+            # id_ = views.add_new_item_parent(parent_id)
             bot.send_message(query.message.chat.id, 'Введите наименование товара:')
+            bot.register_next_step_handler(query.message, add_name, parent_id)
         elif (query.data.startswith('delete_item')):
-            views.delete(config.writing_id)
-            bot.send_message(query.message.chat.id, '{} {} {}'.format
-                                            ('Категория', text, 'удалена'))
-            bot.delete_message(query.message.chat.id, query.message.message_id)
+            category = views.get_full_name_by_id(parent_id)
+            views.delete(parent_id)
+            bot.send_message(query.message.chat.id, '{} {} {}'.format('Категория', category,  'удалена'))
         elif (query.data.startswith('change_item')):
-            config.change_item_status = 1
-            id_ = int(query.data[-1])
+            category = views.get_full_name_by_id(parent_id)
+            amount = views.get_item_by_id(parent_id).amount
+            old_category = '::'.join([category, str(amount)])
             bot.send_message(query.message.chat.id, 'Введите новое наименование товара:')
+            bot.register_next_step_handler(query.message, change_name, parent_id, old_category)
 
 # @bot.message_handler(commands=['rename'])
 # def change_username(message):
@@ -86,7 +116,7 @@ def process_command(message, command, level):
     config.writing_id = level
     all_items = views.get_immed_heirs(level)
     markup = generate_markup(all_items, properties[0], properties[1], level)
-    message_ = properties[2] if level == 1 else message.text + config.categories
+    message_ = properties[2] + views.get_full_name_by_id(level)
     config.categories = ''
     bot.send_message(message.chat.id, 
             text=message_,
@@ -110,32 +140,6 @@ def clear(message):
 
 @bot.message_handler(func=lambda message: views.check_id(message.chat.id), content_types=['text'])
 def process_text(message):
-    if (config.add_item_status == 1):
-        config.add_item_status = 2
-        config.name = message.text
-        bot.send_message(message.chat.id, text='Введите количество:')
-    elif (config.add_item_status == 2):
-        config.add_item_status = 0
-        config.amount = int(message.text)
-        parent_name = views.add(config.name, config.amount, config.writing_id)
-        bot.send_message(message.chat.id, 
-        text= '{}: {}({})::{}'.format('Добавлен товар', config.name, parent_name, config.amount))
-
-    elif (config.change_item_status == 1):
-        config.change_item_status = 2
-        config.name = message.text
-        bot.send_message(message.chat.id, text='Введите новое количество:')
-    elif (config.change_item_status == 2):
-        config.change_item_status = 0
-        config.amount = int(message.text)
-        prev_item = views.change(config.name, config.amount, config.writing_id)
-        parent_name = views.get_name_by_id(prev_item.parent_id)
-        bot.send_message(message.chat.id, 
-        text= '{}: {}({})::{} {} {}({})::{}'.format('Товар изменен c', 
-                        prev_item.name, parent_name, prev_item.amount,
-                        'на', config.name, parent_name, config.amount))
-
-    else:
         bot.send_message(message.chat.id, text=message.text)
 
 
@@ -148,7 +152,7 @@ def process_order_callback(query):
     id_ = int(query.data[-1])
     config.reading_id = id_
     items = views.get_immed_heirs(id_)
-    category_name = views.get_name_by_id(id_)
+    category_name = views.get_item_by_id(id_).name
     config.categories += ':{}:'.format(category_name)
     message_ = query.message.text + config.categories
     config.categories = ''
