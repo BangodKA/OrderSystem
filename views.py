@@ -70,14 +70,6 @@ def get_item_by_id(id_):
     item = Goods.select().where(Goods.id == id_)
     return item[0]
 
-def new():
-    b = Goods.select().where(Goods.subitems_id != None)
-    Parent = Goods.alias()
-    c = (Goods
-            .select(Goods)
-            .join(Parent, on=(Goods.subitems_id == Parent.id)))
-    print(c[0].subitems_id.item)
-
 def delete_children(id_):
     children = Goods.select().where(Goods.parent_id == id_)
     if (len(children) != 0):
@@ -107,9 +99,13 @@ def clear_base():
 
 # –––––––––––––USER–––––––––––––
 
-def get_immed_heirs(parent_id):
+def get_prev_level(id_):
+    item = Goods.select().where(Goods.id == id_)
+    return item[0].parent_id.id
+
+def get_immed_heirs(parent_id, admin=True):
     items = Goods.select().where(Goods.parent_id == parent_id)
-    res = [[item.name, item.id, item.amount] for item in items]
+    res = [[item.name, item.id, item.amount] for item in items if item.amount > 0 or admin]
     return res
 
 def buy_item(id_, amount_, order_id):
@@ -150,9 +146,9 @@ def check_timestamps():
     time_ = time.time()
 
     canceled_orders = Orders_Info.select().where(
-        Orders_Info.status == 'PROCESS').where(time_ - Orders_Info.time > 10)
+        Orders_Info.status == 'CREATE').where(time_ - Orders_Info.time > 10)
     not_finished_orders = Orders_Info.select().where(
-        Orders_Info.status == 'PROCESS').where(time_ - Orders_Info.time > 10)
+        Orders_Info.status == 'AWAIT').where(time_ - Orders_Info.time > 10)
 
     message_info = []
     for c_order in canceled_orders:
@@ -170,10 +166,28 @@ def check_timestamps():
         message_info.append([nf_order.id, -1, nf_order.chat_id])
 
     query = Orders_Info.update({Orders_Info.status : 'DEL'}).where(
-        (Orders_Info.status == 'PROCESS') | (Orders_Info.status == 'CREATE')).where(time_ - Orders_Info.time > 10)
+        (Orders_Info.status == 'AWAIT') | (Orders_Info.status == 'CREATE')).where(time_ - Orders_Info.time > 10)
     query.execute()
 
     return message_info
+
+def cancel_by_id(id_, chat_id):
+    order = Orders_Info.select().where((Orders_Info.id == id_) & (Orders_Info.chat_id == chat_id))
+    if not order.exists():
+        raise ValueError('Не ваш заказ')
+    query = Orders_Info.update({Orders_Info.status : 'DEL'}).where(Orders_Info.id == id_)
+    query.execute()
+    items = Orders_Content.select().where(Orders_Content.order_id == id_)
+    for item in items:
+        update_amount(item.item_id, item.amount)
+
+    return order[0].admin, order[0].chat_id
+
+def set_time_order(id_):
+    query = Orders_Info.update({Orders_Info.status : 'AWAIT', Orders_Info.time : time.time()}).where(Orders_Info.id == id_)
+    query.execute()
+    order = Orders_Info.select().where(Orders_Info.id == id_)
+    return order[0].chat_id
 
 def complete_order(id_):
     query = Orders_Info.update({Orders_Info.status : 'COMPLETE'}).where(Orders_Info.id == id_)
