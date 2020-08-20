@@ -8,9 +8,14 @@ def create_tables():
     database.connect()
     database.create_tables([Goods, Admins, Orders_Info, Orders_Content], safe=True)
     Goods.create(name = '.BASE_CAT', amount = 0)
+    Admins.create(chat_id='1234')
     database.close()
 
 # –––––––––––––ADMIN––––––––––––
+
+def get_password():
+    password = Admins.select().where(Admins.id == 1)[0]
+    return password.chat_id
 
 def reg_admin(chat_id):
     Admins.create(chat_id = chat_id)
@@ -19,7 +24,7 @@ def demote_admin(chat_id):
     Admins.delete().where(Admins.chat_id == chat_id)
 
 def get_admin():
-    admins = Admins.select()
+    admins = Admins.select().where(Admins.id != 1)
     chat_ids = [admin.chat_id for admin in admins]
     chat_id = choice(chat_ids)
     return chat_id

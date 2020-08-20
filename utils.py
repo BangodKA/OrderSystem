@@ -103,7 +103,8 @@ def process_callback(query):
 
 @bot.message_handler(commands=['admin'])
 def reg_admin(message):
-    if (message.text[7:] == config.password):
+    password = views.get_password()
+    if (message.text[7:] == password):
         views.reg_admin(message.chat.id)
         bot.send_message(message.chat.id, text='Слушаюсь и повинуюсь, мой господин!')
     else:
@@ -118,7 +119,17 @@ def demote(message):
         bot.send_message(message.chat.id, text=message.text)
 
 def process_command(message, command, level):
-    properties = config.properties[command]
+    add_properties = ['add_item', 'Новая категория', 'Выберите категорию:']
+    delete_properties = ['delete_item', 'Удалить категорию', 'Выберите категорию для удаления:']
+    name_properties = ['name_item', 'Изменить категорию', 'Выберите категорию для изменения:']
+    change_properties = ['amount_item', 'Изменить категорию', 'Выберите категорию для изменения:']
+    properties_ = {
+        'add' : add_properties,
+        'delete' : delete_properties,
+        'name' : name_properties,
+        'amount' : change_properties
+    }
+    properties = properties_[command]
     all_items = views.get_immed_heirs(level)
     markup = generate_markup(all_items, properties[0], properties[1], level)
     message_ = properties[2] + views.get_full_name_by_id(level)

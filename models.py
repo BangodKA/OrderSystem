@@ -1,7 +1,7 @@
 from peewee import SqliteDatabase, Model, CharField, IntegerField, ForeignKeyField, FloatField
-from config import DATABASE
+# from config import DATABASE
 
-database = SqliteDatabase(DATABASE)
+database = SqliteDatabase('fair.db')
 
 class BaseModel(Model):
     class Meta:
