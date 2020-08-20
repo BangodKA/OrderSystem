@@ -55,7 +55,7 @@ def generate_markup(variants, keyboard_type, stop_button, level, order_id=''):
     if (keyboard_type == 'order'):
         markup.add(types.InlineKeyboardButton('Отменить выбор', callback_data=('_'.join([keyboard_type, str(order_id), str(level), '-2']))))
 
-    if ((keyboard_type == 'add_item' or level != 1) and len(stop_button) != 0):
+    if ((keyboard_type == 'add_item' or keyboard_type == 'items_all' or level != 1) and len(stop_button) != 0):
         markup.add(types.InlineKeyboardButton(stop_button, callback_data=('_'.join([keyboard_type, str(order_id), str(level), '0']))))
     
     if (level != 1):
@@ -69,7 +69,8 @@ def generate_markup(variants, keyboard_type, stop_button, level, order_id=''):
                         query.data.startswith('add_item') or
                         query.data.startswith('delete_item') or
                         query.data.startswith('name_item') or
-                        query.data.startswith('amount_item'))
+                        query.data.startswith('amount_item') or
+                        query.data.startswith('items_all'))
 def process_callback(query):
     bot.answer_callback_query(query.id, text = None, show_alert = False)
     bot.delete_message(query.message.chat.id, query.message.message_id)
@@ -98,6 +99,8 @@ def process_callback(query):
         elif (query.data.startswith('amount_item')):
             bot.send_message(query.message.chat.id, 'Введите новое количество товара:')
             bot.register_next_step_handler(query.message, change_amount, parent_id)
+        # elif (query.data.startswith('items_all')):
+        #     bot.send_message(query.message.chat.id, 'Что еще поделаем?')
 
 # –––––––––––––ADMIN––––––––––––
 
@@ -123,19 +126,24 @@ def process_command(message, command, level):
     delete_properties = ['delete_item', 'Удалить категорию', 'Выберите категорию для удаления:']
     name_properties = ['name_item', 'Изменить категорию', 'Выберите категорию для изменения:']
     change_properties = ['amount_item', 'Изменить категорию', 'Выберите категорию для изменения:']
+    items_properties = ['items_all', 'Завершить просмотр', 'Категория:']
     properties_ = {
         'add' : add_properties,
         'delete' : delete_properties,
         'name' : name_properties,
-        'amount' : change_properties
+        'amount' : change_properties,
+        'items' : items_properties,
     }
     properties = properties_[command]
     all_items = views.get_immed_heirs(level)
-    markup = generate_markup(all_items, properties[0], properties[1], level)
-    message_ = properties[2] + views.get_full_name_by_id(level)
-    bot.send_message(message.chat.id, text=message_, reply_markup=markup)
+    if (command != 'add' and level == 1 and len(all_items) == 0):
+        bot.send_message(message.chat.id, text='Товаров нет!')
+    else:
+        markup = generate_markup(all_items, properties[0], properties[1], level)
+        message_ = properties[2] + views.get_full_name_by_id(level)
+        bot.send_message(message.chat.id, text=message_, reply_markup=markup)
 
-@bot.message_handler(commands=['add', 'delete', 'name', 'amount'])
+@bot.message_handler(commands=['add', 'delete', 'name', 'amount', 'items'])
 def get_command(message):
     if (views.check_id(str(message.chat.id))):
         process_command(message, message.text[1:], 1)
@@ -224,7 +232,7 @@ def finish_order_callback(query):
         bot.send_message(admin, text=text)
     else:
         bot.send_message(query.message.chat.id, text='Нельзя создать пустой заказ!')
-        start(query.message)
+        # start(query.message)
     check_timeout()
 
 @bot.callback_query_handler(lambda query: query.data.startswith('cancel'))
@@ -238,7 +246,7 @@ def cancel_processing_order(query):
         bot.send_message(query.message.chat.id, text='Заказ отменен!')
     else:
         bot.send_message(query.message.chat.id, text='Заказ был пуст!')
-        start(query.message)
+        # start(query.message)
 
 def cancel_complete_order(message):
     try:
