@@ -111,7 +111,7 @@ def get_immed_heirs(parent_id, admin=True):
 def buy_item(id_, amount_, order_id):
     item = Goods.select().where(Goods.id == id_)[0]
     if (item.amount < amount_):
-        raise ValueError(' '.join(['Этого товара осталось всего', str(item.amount)]))
+        raise OverflowError(' '.join(['Этого товара осталось всего', str(item.amount), '\nВведите другое количество']))
     
     same_item = Orders_Content.select().where(
         (Orders_Content.order_id == order_id) & (Orders_Content.item_id == id_))
@@ -174,7 +174,7 @@ def check_timestamps():
 def cancel_by_id(id_, chat_id):
     order = Orders_Info.select().where((Orders_Info.id == id_) & (Orders_Info.chat_id == chat_id))
     if not order.exists():
-        raise ValueError('Не ваш заказ')
+        raise NameError('Не ваш заказ, ая-яй-яй!')
     query = Orders_Info.update({Orders_Info.status : 'DEL'}).where(Orders_Info.id == id_)
     query.execute()
     items = Orders_Content.select().where(Orders_Content.order_id == id_)
