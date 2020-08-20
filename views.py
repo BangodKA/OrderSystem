@@ -117,6 +117,8 @@ def buy_item(id_, amount_, order_id):
     item = Goods.select().where(Goods.id == id_)[0]
     if (item.amount < amount_):
         raise OverflowError(' '.join(['Этого товара осталось всего', str(item.amount), '\nВведите другое количество']))
+    if (amount_ <= 0):
+        raise OverflowError('\n'.join(['Число товаров должно быть натуральным', 'Введите другое количество']))
     
     same_item = Orders_Content.select().where(
         (Orders_Content.order_id == order_id) & (Orders_Content.item_id == id_))
@@ -187,6 +189,21 @@ def cancel_by_id(id_, chat_id):
         update_amount(item.item_id, item.amount)
 
     return order[0].admin, order[0].chat_id
+
+def get_order_items(id_, chat_id):
+    order = Orders_Info.select().where((Orders_Info.id == id_) & (Orders_Info.chat_id == chat_id))
+    if not order.exists():
+        raise NameError('Не ваш заказ, ая-яй-яй!')
+    items = Orders_Content.select().where(Orders_Content.order_id == order[0].id)
+    return [[get_full_name_by_id(item.item_id), item.item_id, item.amount] for item in items]
+
+def erase_item_order_by_ids(id_, order_id):
+    item = Orders_Content.select().where(Orders_Content.item_id == id_).where(Orders_Content.order_id == order_id)
+    amount = item[0].amount
+    update_amount(id_, amount)
+    query = Orders_Content.delete().where(Orders_Content.item_id == id_).where(Orders_Content.order_id == order_id)
+    query.execute()
+    return amount
 
 def set_time_order(id_):
     query = Orders_Info.update({Orders_Info.status : 'AWAIT', Orders_Info.time : time.time()}).where(Orders_Info.id == id_)

@@ -16,9 +16,11 @@ def add_amount(message, parent_id, name):
         bot.send_message(message.chat.id, 
                 text= '{} {} {} {}'.format('Товар', full_name,
                                 'добавлен в количестве', amount))
-    except:
+    except ValueError:
         bot.send_message(message.chat.id, text='Введите количество числом!')
         bot.register_next_step_handler(message, add_amount, parent_id, name)
+    except:
+        bot.send_message(message.chat.id, text=sys.exc_info()[1])
 
 
 def add_name(message, parent_id):
@@ -185,7 +187,8 @@ def complete(message):
 
 def process_next_order_step(chat_id, order_id):
     markup = types.InlineKeyboardMarkup()
-    markup.add(types.InlineKeyboardButton('Выбрать другой товар', callback_data='_'.join(['order', str(order_id), '1'])))
+    markup.add(types.InlineKeyboardButton('Выбрать другой товар', callback_data='_'.join(['order', str(order_id), '1', '1'])))
+    markup.add(types.InlineKeyboardButton('Удалить товар из заказа', callback_data='_'.join(['erase', str(order_id), '1'])))
     markup.add(types.InlineKeyboardButton('Подтвердить заказ', callback_data='_'.join(['finish', str(order_id)])))
     markup.add(types.InlineKeyboardButton('Отменить заказ', callback_data='_'.join(['cancel', str(order_id)])))
     bot.send_message(chat_id, text='Что вы хотите сделать?', reply_markup=markup)
@@ -265,6 +268,53 @@ def cancel_complete_order(message):
 def cancel_order_callback(message):
     bot.send_message(message.chat.id, text='Введите номер')
     bot.register_next_step_handler(message, cancel_complete_order)
+
+@bot.callback_query_handler(lambda query: query.data.startswith('del_item'))
+def finish_delete_item_processing_order(query):
+    bot.answer_callback_query(query.id, text = None, show_alert = False)
+    bot.delete_message(query.message.chat.id, query.message.message_id)
+
+    data = query.data.split(sep='_')
+    id_ = int(data[-1])
+    order_id = int(data[-3])
+
+    if (id_ != 0):
+        amount = views.erase_item_order_by_ids(id_, order_id)
+        name = views.get_full_name_by_id(id_)
+        text = '{} {}::{} {}'.format('Товар', name, amount, 'удален')
+        bot.send_message(query.message.chat.id, text=text)
+
+    process_next_order_step(query.message.chat.id, order_id)
+
+
+@bot.callback_query_handler(lambda query: query.data.startswith('erase'))
+def delete_item_processing_order(query):
+    bot.answer_callback_query(query.id, text = None, show_alert = False)
+    bot.delete_message(query.message.chat.id, query.message.message_id)
+
+    id_ = int(query.data.split('_')[-2])
+    if (id_ != 0):
+        order_items = views.get_order_items(id_, query.message.chat.id)
+        markup = generate_markup(order_items, 'del_item', 'Отменить', 1, id_)
+        bot.send_message(query.message.chat.id, text='Что удалить?', reply_markup=markup)
+    else:
+        bot.send_message(query.message.chat.id, text='Заказ был пуст!')
+
+# def delete_item_order(message):
+#     try:
+#         id_ = int(message.text)
+#         order_items = views.get_order_items(id_, message.chat.id)
+#         markup = generate_markup(order_items, 'del_item', 'Отменить', 1)
+#         bot.send_message(message.chat.id, text='Что удалить?', reply_markup=markup)
+#     except ValueError:
+#         bot.send_message(message.chat.id, text='Неверный номер')
+#     except NameError:
+#         bot.send_message(message.chat.id, text=sys.exc_info()[1])
+
+# @bot.message_handler(commands=['del'])
+# def delete_item_order_callback(message):
+#     bot.send_message(message.chat.id, text='Введите номер заказа')
+#     bot.register_next_step_handler(message, delete_item_order)
 
 @bot.callback_query_handler(lambda query: query.data.startswith('order'))
 def process_order_callback(query):
