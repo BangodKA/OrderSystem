@@ -1,11 +1,12 @@
-from models import database, Goods, Admins, Orders
-from datetime import date
+from models import database, Goods, Admins, Orders_Info, Orders_Content
 from random import choice, seed
 import config
+from datetime import datetime
+import time
 
 def create_tables():
     database.connect()
-    database.create_tables([Goods, Admins, Orders], safe=True)
+    database.create_tables([Goods, Admins, Orders_Info, Orders_Content], safe=True)
     Goods.create(name = '.BASE_CAT', amount = 0)
     database.close()
 
@@ -17,7 +18,7 @@ def reg_admin(chat_id):
 def demote_admin(chat_id):
     Admins.delete().where(Admins.chat_id == chat_id)
 
-def get_chat_id():
+def get_admin():
     admins = Admins.select()
     chat_ids = [admin.chat_id for admin in admins]
     chat_id = choice(chat_ids)
@@ -111,10 +112,69 @@ def get_immed_heirs(parent_id):
     res = [[item.name, item.id, item.amount] for item in items]
     return res
 
-def buy_item(id_, amount_):
+def buy_item(id_, amount_, order_id):
     item = Goods.select().where(Goods.id == id_)[0]
     if (item.amount < amount_):
-        raise ValueError(str.join('Этого товара осталось всего ', str(item.amount)))
-    q = (Goods.update({Goods.amount: Goods.amount - amount_}).where(Goods.id == id_))
-    q.execute()
+        raise ValueError(' '.join(['Этого товара осталось всего', str(item.amount)]))
+    
+    same_item = Orders_Content.select().where(
+        (Orders_Content.order_id == order_id) & (Orders_Content.item_id == id_))
+    if same_item.exists():
+        query = Orders_Content.update({Orders_Content.amount : Orders_Content.amount + amount_}).where(
+            (Orders_Content.order_id == order_id) & (Orders_Content.item_id == id_))
+        query.execute()
+    else:
+        Orders_Content.create(order_id=order_id, item_id=id_, amount=amount_)
+    query = Orders_Info.update({Orders_Info.time : time.time()}).where(Orders_Info.id == order_id)
+    query.execute()
+    
     update_amount(id_, -amount_)
+
+def add_new_order(chat_id, admin):
+    item = Orders_Info.create(chat_id=chat_id, admin=admin,
+                                time=time.time(), status='CREATE')
+    return item.id
+
+def finish_order(order_id):
+    query = Orders_Info.update({Orders_Info.time : time.time(), Orders_Info.status : 'PROCESS'}).where(Orders_Info.id == order_id)
+    query.execute()
+
+    order_content = Orders_Content.select().where(Orders_Content.order_id == order_id)
+
+    order = '\n'.join(['{}::{}'.format(get_full_name_by_id(inst.item_id), inst.amount) for inst in order_content])
+    
+    order_info = Orders_Info.select().where(Orders_Info.id == order_id)
+    return order_info[0].admin, order, order_id
+
+def check_timestamps():
+    time_ = time.time()
+
+    canceled_orders = Orders_Info.select().where(
+        Orders_Info.status == 'PROCESS').where(time_ - Orders_Info.time > 10)
+    not_finished_orders = Orders_Info.select().where(
+        Orders_Info.status == 'PROCESS').where(time_ - Orders_Info.time > 10)
+
+    message_info = []
+    for c_order in canceled_orders:
+        items = Orders_Content.select().where(Orders_Content.order_id == c_order.id)
+        for item in items:
+            update_amount(item.item_id, item.amount)
+
+        message_info.append([c_order.id, c_order.admin, c_order.chat_id])
+
+    for nf_order in not_finished_orders:
+        items = Orders_Content.select().where(Orders_Content.order_id == nf_order.id)
+        for item in items:
+            update_amount(item.item_id, item.amount)
+
+        message_info.append([nf_order.id, -1, nf_order.chat_id])
+
+    query = Orders_Info.update({Orders_Info.status : 'DEL'}).where(
+        (Orders_Info.status == 'PROCESS') | (Orders_Info.status == 'CREATE')).where(time_ - Orders_Info.time > 10)
+    query.execute()
+
+    return message_info
+
+def complete_order(id_):
+    query = Orders_Info.update({Orders_Info.status : 'COMPLETE'}).where(Orders_Info.id == id_)
+    query.execute()
