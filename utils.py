@@ -8,14 +8,30 @@ import threading
 
 bot = telebot.TeleBot(config.token)
 
+def add_price(message, parent_id, name, amount):
+    try:
+        price = int(message.text)
+        id_ = views.add(name, amount, parent_id, price)
+        full_name = views.get_full_name_by_id(id_)
+        bot.send_message(message.chat.id, 
+                text= '{} {} {} {} {} {}'.format('Товар', full_name, 'стоимостью', price,
+                                'добавлен в количестве', amount))
+        bot.register_next_step_handler(message, add_price, parent_id, name, amount)
+    except ValueError:
+        bot.send_message(message.chat.id, text='Введите цену числом!')
+        bot.register_next_step_handler(message, add_price, parent_id, name, amount)
+    except:
+        bot.send_message(message.chat.id, text=sys.exc_info()[1])
+
 def add_amount(message, parent_id, name):
     try:
         amount = int(message.text)
-        id_ = views.add(name, amount, parent_id)
-        full_name = views.get_full_name_by_id(id_)
-        bot.send_message(message.chat.id, 
-                text= '{} {} {} {}'.format('Товар', full_name,
-                                'добавлен в количестве', amount))
+        # id_ = views.add(name, amount, parent_id)
+        # full_name = views.get_full_name_by_id(id_)
+        # bot.send_message(message.chat.id, 
+        #         text= '{} {} {} {}'.format('Товар', full_name,
+        #                         'добавлен в количестве', amount))
+        bot.register_next_step_handler(message, add_price, parent_id, name, amount)
     except ValueError:
         bot.send_message(message.chat.id, text='Введите количество числом!')
         bot.register_next_step_handler(message, add_amount, parent_id, name)
@@ -52,7 +68,7 @@ def generate_markup(variants, keyboard_type, stop_button, level, order_id=''):
     markup = types.InlineKeyboardMarkup()
 
     for item in variants:
-        markup.add(types.InlineKeyboardButton('{}::{}'.format(item[0], item[-1]), callback_data=('_'.join([keyboard_type, str(order_id), str(level), str(item[1])]))))
+        markup.add(types.InlineKeyboardButton('{}::{} – {} радиан'.format(item[0], item[-2], item[-1]), callback_data=('_'.join([keyboard_type, str(order_id), str(level), str(item[1])]))))
     
     if (keyboard_type == 'order'):
         markup.add(types.InlineKeyboardButton('Отменить выбор', callback_data=('_'.join([keyboard_type, str(order_id), str(level), '-2']))))
@@ -227,7 +243,8 @@ def finish_order_callback(query):
 
     data = query.data.split(sep='_')
     order_id = int(data[-1])
-    if (order_id != 0):
+
+    if (views.check_order(order_id)):
         admin, order, order_id = views.finish_order(order_id)
         text = '{}: {}!\n{}:\n{}'.format('Номер заказа', order_id, 'Заказ', order)
         bot.send_message(query.message.chat.id, text=text)
@@ -245,8 +262,10 @@ def cancel_processing_order(query):
 
     id_ = int(query.data.split('_')[-1])
     if (id_ != 0):
-        views.cancel_by_id(id_, query.message.chat.id)
+        admin, _ = views.cancel_by_id(id_, query.message.chat.id)
         bot.send_message(query.message.chat.id, text='Заказ отменен!')
+        text = '{} {} {}'.format('Заказ номер', id_, 'отменен')
+        bot.send_message(admin, text=text)
     else:
         bot.send_message(query.message.chat.id, text='Заказ был пуст!')
         # start(query.message)
@@ -295,26 +314,10 @@ def delete_item_processing_order(query):
     id_ = int(query.data.split('_')[-2])
     if (id_ != 0):
         order_items = views.get_order_items(id_, query.message.chat.id)
-        markup = generate_markup(order_items, 'del_item', 'Отменить', 1, id_)
+        markup = generate_markup(order_items, 'del_item', 'Отменить', 3, id_)
         bot.send_message(query.message.chat.id, text='Что удалить?', reply_markup=markup)
     else:
         bot.send_message(query.message.chat.id, text='Заказ был пуст!')
-
-# def delete_item_order(message):
-#     try:
-#         id_ = int(message.text)
-#         order_items = views.get_order_items(id_, message.chat.id)
-#         markup = generate_markup(order_items, 'del_item', 'Отменить', 1)
-#         bot.send_message(message.chat.id, text='Что удалить?', reply_markup=markup)
-#     except ValueError:
-#         bot.send_message(message.chat.id, text='Неверный номер')
-#     except NameError:
-#         bot.send_message(message.chat.id, text=sys.exc_info()[1])
-
-# @bot.message_handler(commands=['del'])
-# def delete_item_order_callback(message):
-#     bot.send_message(message.chat.id, text='Введите номер заказа')
-#     bot.register_next_step_handler(message, delete_item_order)
 
 @bot.callback_query_handler(lambda query: query.data.startswith('order'))
 def process_order_callback(query):
@@ -338,21 +341,28 @@ def process_order_callback(query):
                     reply_markup=markup)
         else:
             if (id_ != 1):
-                if (order_id == 0):
-                    admin = views.get_admin()
-                    order_id = views.add_new_order(query.message.chat.id, admin)
-                bot.send_message(query.message.chat.id, text=full_category)
-                bot.send_message(query.message.chat.id, text='Введите количество:')
-                bot.register_next_step_handler(query.message, order_amount, id_, full_category, order_id)
+                try:
+                    if (order_id == 0):
+                        admin = views.get_admin()
+                        order_id = views.add_new_order(query.message.chat.id, admin)
+                        bot.send_message(admin, text='{} {} {}'.format('Заказ', order_id, 'начат!'))
+                    bot.send_message(query.message.chat.id, text=full_category)
+                    bot.send_message(query.message.chat.id, text='Введите количество:')
+                    bot.register_next_step_handler(query.message, order_amount, id_, full_category, order_id)
+                except OverflowError:
+                    bot.send_message(query.message.chat.id, text=sys.exc_info()[1])
             else:
                 bot.send_message(query.message.chat.id, text='Товаров нет!')
 
 @bot.message_handler(commands=['start', 'order'])
 def start(message):
-    markup = types.InlineKeyboardMarkup()
-    markup.add(types.InlineKeyboardButton('Посмотреть товары', url='https://vk.com/bangod'))
-    markup.add(types.InlineKeyboardButton('Перейти к заказу', callback_data=('order_0_0_1')))
-    bot.send_message(message.chat.id, text='Что вы хотите сделать?', reply_markup=markup)
+    if (views.check_fair()):
+        markup = types.InlineKeyboardMarkup()
+        markup.add(types.InlineKeyboardButton('Посмотреть товары', url='https://vk.com/bangod'))
+        markup.add(types.InlineKeyboardButton('Перейти к заказу', callback_data=('order_0_0_1')))
+        bot.send_message(message.chat.id, text='Что вы хотите сделать?', reply_markup=markup)
+    else:
+        bot.send_message(message.chat.id, text='Магазин не работает')
 
 
 

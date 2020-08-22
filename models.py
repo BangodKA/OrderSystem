@@ -10,10 +10,11 @@ class BaseModel(Model):
 class Goods(BaseModel):
     name = CharField(default='Item')
     amount = IntegerField(default=0)
+    price = IntegerField(default=0)
     parent_id = ForeignKeyField('self', null=True, backref='children')
 
 class Admins(BaseModel):
-    chat_id = CharField(unique=True)
+    chat_id = CharField()
 
 class Orders_Info(BaseModel):
     chat_id = CharField()
@@ -25,3 +26,4 @@ class Orders_Content(BaseModel):
     order_id = ForeignKeyField(Orders_Info, backref='full_content')
     item_id = IntegerField()
     amount = IntegerField()
+    cost = IntegerField()

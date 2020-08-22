@@ -8,6 +8,14 @@ def create_tables():
     database.connect()
     database.create_tables([Goods, Admins, Orders_Info, Orders_Content], safe=True)
     Goods.create(name = '.BASE_CAT', amount = 0)
+    brcls = Goods.create(name = 'Браслеты', amount = 100, parent_id = 1)
+    pins = Goods.create(name = 'Значки', amount = 75, parent_id = 1)
+    Goods.create(name = 'Кружки', amount = 150, price = 100, parent_id = 1)
+    Goods.create(name = 'Синие', amount = 50, price = 10, parent_id = brcls)
+    Goods.create(name = 'Красные', amount = 36, price = 15, parent_id = brcls)
+    Goods.create(name = 'Желтые', amount = 14, price = 20, parent_id = brcls)
+    Goods.create(name = 'Жестяные', amount = 30, price = 17, parent_id = pins)
+    Goods.create(name = 'Деревянные', amount = 45, price = 13, parent_id = pins)
     Admins.create(chat_id='1234')
     database.close()
 
@@ -18,16 +26,22 @@ def get_password():
     return password.chat_id
 
 def reg_admin(chat_id):
-    Admins.create(chat_id = chat_id)
+    admin = Admins.select().where(Admins.chat_id == chat_id)
+    if (not admin.exists()):
+        Admins.create(chat_id = chat_id)
 
 def demote_admin(chat_id):
-    Admins.delete().where(Admins.chat_id == chat_id)
+    query = Admins.delete().where(Admins.chat_id == chat_id)
+    query.execute()
 
 def get_admin():
     admins = Admins.select().where(Admins.id != 1)
+    if (not admins.exists()):
+        raise OverflowError('Магазин закрыт!')
     chat_ids = [admin.chat_id for admin in admins]
     chat_id = choice(chat_ids)
     return chat_id
+    
 
 def check_id(chat_id):
     admins = Admins.select()
@@ -56,8 +70,8 @@ def get_full_name_by_id(id_):
         res = item[0].name
     return res
 
-def add(name_, amount_, parent_id_):
-    item = Goods.create(name = name_, amount = amount_, parent_id = parent_id_)
+def add(name_, amount_, parent_id_, price_):
+    item = Goods.create(name = name_, amount = amount_, price = price_, parent_id = parent_id_)
     if (amount_ != 0 and parent_id_ == 1):
         update_amount(item.parent_id, amount_)
     return item.id
@@ -98,8 +112,18 @@ def delete(id_):
 def clear_base():
     query = Goods.delete().where(Goods.id != 1)
     query.execute()
-    query = Goods.update({Goods.amount: 0})
+    query = Goods.update({Goods.amount: 0}).where(Goods.id == 0)
     query.execute()
+    query = Orders_Info.delete().where(Orders_Info.id > 0)
+    query.execute()
+    query = Orders_Content.delete().where(Orders_Content.id > 0)
+    query.execute()
+
+def check_fair():
+    admins = Admins.select().where(Admins.id != 1)
+    if (admins.exists()):
+        return True
+    return False
 
 
 # –––––––––––––USER–––––––––––––
@@ -110,7 +134,7 @@ def get_prev_level(id_):
 
 def get_immed_heirs(parent_id, admin=True):
     items = Goods.select().where(Goods.parent_id == parent_id)
-    res = [[item.name, item.id, item.amount] for item in items if item.amount > 0 or admin]
+    res = [[item.name, item.id, item.amount, item.price] for item in items if item.amount > 0 or admin]
     return res
 
 def buy_item(id_, amount_, order_id):
@@ -120,14 +144,17 @@ def buy_item(id_, amount_, order_id):
     if (amount_ <= 0):
         raise OverflowError('\n'.join(['Число товаров должно быть натуральным', 'Введите другое количество']))
     
+    price = Goods.select().where(Goods.id == id_)[0].price
     same_item = Orders_Content.select().where(
         (Orders_Content.order_id == order_id) & (Orders_Content.item_id == id_))
     if same_item.exists():
-        query = Orders_Content.update({Orders_Content.amount : Orders_Content.amount + amount_}).where(
+        query = Orders_Content.update({Orders_Content.amount : Orders_Content.amount + amount_,
+                                        Orders_Content.cost : Orders_Content.cost + amount_ * price}).where(
             (Orders_Content.order_id == order_id) & (Orders_Content.item_id == id_))
         query.execute()
     else:
-        Orders_Content.create(order_id=order_id, item_id=id_, amount=amount_)
+        Orders_Content.create(order_id=order_id, item_id=id_, amount=amount_, cost = price * amount_)
+
     query = Orders_Info.update({Orders_Info.time : time.time()}).where(Orders_Info.id == order_id)
     query.execute()
     
@@ -144,7 +171,7 @@ def finish_order(order_id):
 
     order_content = Orders_Content.select().where(Orders_Content.order_id == order_id)
 
-    order = '\n'.join(['{}::{}'.format(get_full_name_by_id(inst.item_id), inst.amount) for inst in order_content])
+    order = '\n'.join(['{}::{} – {} радиан'.format(get_full_name_by_id(inst.item_id), inst.amount, inst.cost) for inst in order_content])
     
     order_info = Orders_Info.select().where(Orders_Info.id == order_id)
     return order_info[0].admin, order, order_id
@@ -214,3 +241,12 @@ def set_time_order(id_):
 def complete_order(id_):
     query = Orders_Info.update({Orders_Info.status : 'COMPLETE'}).where(Orders_Info.id == id_)
     query.execute()
+
+
+def check_order(order_id):
+    items = Orders_Content.select().where(Orders_Content.order_id == order_id)
+    if (items.exists()):
+        return True
+    query = Orders_Info.update({Orders_Info.status : 'DEL'}).where(Orders_Info.id == order_id)
+    query.execute()
+    return False
