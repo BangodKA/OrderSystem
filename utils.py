@@ -68,7 +68,7 @@ def generate_markup(variants, keyboard_type, stop_button, level, order_id=''):
     markup = types.InlineKeyboardMarkup()
 
     for item in variants:
-        markup.add(types.InlineKeyboardButton('{}::{} – {} радиан'.format(item[0], item[-2], item[-1]), callback_data=('_'.join([keyboard_type, str(order_id), str(level), str(item[1])]))))
+        markup.add(types.InlineKeyboardButton('{}::{}::{}'.format(item[0], item[-2], item[-1]), callback_data=('_'.join([keyboard_type, str(order_id), str(level), str(item[1])]))))
     
     if (keyboard_type == 'order'):
         markup.add(types.InlineKeyboardButton('Отменить выбор', callback_data=('_'.join([keyboard_type, str(order_id), str(level), '-2']))))
@@ -247,8 +247,8 @@ def finish_order_callback(query):
     order_status = views.check_order(order_id)
 
     if (order_status == 0):
-        admin, order, order_id = views.finish_order(order_id)
-        text = '{}: {}!\n{}:\n{}'.format('Номер заказа', order_id, 'Заказ', order)
+        admin, order, order_id, ovrl_cost = views.finish_order(order_id)
+        text = '{}: {}!\n{}:\n{}\n{}: {}'.format('Номер заказа', order_id, 'Заказ', order, 'Общая стоимость', ovrl_cost)
         bot.send_message(query.message.chat.id, text=text)
         bot.send_message(query.message.chat.id, text='Для отмены заказа введите /cancel')
         bot.send_message(admin, text=text)
@@ -265,13 +265,16 @@ def cancel_processing_order(query):
     bot.delete_message(query.message.chat.id, query.message.message_id)
 
     id_ = int(query.data.split('_')[-1])
-    if (id_ != 0):
+    order_status = views.check_order(id_)
+    if (order_status == 0):
         admin, _ = views.cancel_by_id(id_, query.message.chat.id)
         bot.send_message(query.message.chat.id, text='Заказ отменен!')
         text = '{} {} {}'.format('Заказ номер', id_, 'отменен')
         bot.send_message(admin, text=text)
-    else:
+    elif (order_status == -1):
         bot.send_message(query.message.chat.id, text='Заказ был пуст!')
+    else:
+        bot.send_message(query.message.chat.id, text='Заказ удален!')
         # start(query.message)
 
 def cancel_complete_order(message):

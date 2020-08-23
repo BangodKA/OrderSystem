@@ -171,10 +171,11 @@ def finish_order(order_id):
 
     order_content = Orders_Content.select().where(Orders_Content.order_id == order_id)
 
-    order = '\n'.join(['{}::{} – {} радиан'.format(get_full_name_by_id(inst.item_id), inst.amount, inst.cost) for inst in order_content])
+    order = '\n'.join(['{}::{}::{}'.format(get_full_name_by_id(inst.item_id), inst.amount, inst.cost) for inst in order_content])
     
     order_info = Orders_Info.select().where(Orders_Info.id == order_id)
-    return order_info[0].admin, order, order_id
+    ovrl_cost = sum([item.cost for item in Orders_Content.select().where(Orders_Content.order_id == order_id)])
+    return order_info[0].admin, order, order_id, ovrl_cost
 
 def check_timestamps():
     time_ = time.time()
