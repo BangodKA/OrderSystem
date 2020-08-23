@@ -16,7 +16,6 @@ def add_price(message, parent_id, name, amount):
         bot.send_message(message.chat.id, 
                 text= '{} {} {} {} {} {}'.format('Товар', full_name, 'стоимостью', price,
                                 'добавлен в количестве', amount))
-        bot.register_next_step_handler(message, add_price, parent_id, name, amount)
     except ValueError:
         bot.send_message(message.chat.id, text='Введите цену числом!')
         bot.register_next_step_handler(message, add_price, parent_id, name, amount)
@@ -26,6 +25,7 @@ def add_price(message, parent_id, name, amount):
 def add_amount(message, parent_id, name):
     try:
         amount = int(message.text)
+        bot.send_message(message.chat.id, text='Введите цену:')
         # id_ = views.add(name, amount, parent_id)
         # full_name = views.get_full_name_by_id(id_)
         # bot.send_message(message.chat.id, 
@@ -33,7 +33,7 @@ def add_amount(message, parent_id, name):
         #                         'добавлен в количестве', amount))
         bot.register_next_step_handler(message, add_price, parent_id, name, amount)
     except ValueError:
-        bot.send_message(message.chat.id, text='Введите количество числом!')
+        bot.send_message(message.chat.id, text='Введите цену числом!')
         bot.register_next_step_handler(message, add_amount, parent_id, name)
     except:
         bot.send_message(message.chat.id, text=sys.exc_info()[1])
@@ -73,7 +73,7 @@ def generate_markup(variants, keyboard_type, stop_button, level, order_id=''):
     if (keyboard_type == 'order'):
         markup.add(types.InlineKeyboardButton('Отменить выбор', callback_data=('_'.join([keyboard_type, str(order_id), str(level), '-2']))))
 
-    if ((keyboard_type == 'add_item' or keyboard_type == 'items_all' or level != 1) and len(stop_button) != 0):
+    if ((keyboard_type == 'add_item' or keyboard_type == 'items_all' or keyboard_type == 'del_item' or level != 1) and len(stop_button) != 0):
         markup.add(types.InlineKeyboardButton(stop_button, callback_data=('_'.join([keyboard_type, str(order_id), str(level), '0']))))
     
     if (level != 1):
@@ -244,14 +244,18 @@ def finish_order_callback(query):
     data = query.data.split(sep='_')
     order_id = int(data[-1])
 
-    if (views.check_order(order_id)):
+    order_status = views.check_order(order_id)
+
+    if (order_status == 0):
         admin, order, order_id = views.finish_order(order_id)
         text = '{}: {}!\n{}:\n{}'.format('Номер заказа', order_id, 'Заказ', order)
         bot.send_message(query.message.chat.id, text=text)
         bot.send_message(query.message.chat.id, text='Для отмены заказа введите /cancel')
         bot.send_message(admin, text=text)
-    else:
+    elif (order_status == -1):
         bot.send_message(query.message.chat.id, text='Нельзя создать пустой заказ!')
+    else:
+        bot.send_message(query.message.chat.id, text='Заказ удален!')
         # start(query.message)
     check_timeout()
 
@@ -312,12 +316,15 @@ def delete_item_processing_order(query):
     bot.delete_message(query.message.chat.id, query.message.message_id)
 
     id_ = int(query.data.split('_')[-2])
-    if (id_ != 0):
+    order_status = views.check_order(id_)
+    if (order_status == 0):
         order_items = views.get_order_items(id_, query.message.chat.id)
-        markup = generate_markup(order_items, 'del_item', 'Отменить', 3, id_)
+        markup = generate_markup(order_items, 'del_item', 'Отменить', 1, id_)
         bot.send_message(query.message.chat.id, text='Что удалить?', reply_markup=markup)
-    else:
+    elif (order_status == -1):
         bot.send_message(query.message.chat.id, text='Заказ был пуст!')
+    else:
+        bot.send_message(query.message.chat.id, text='Заказ удален!')
 
 @bot.callback_query_handler(lambda query: query.data.startswith('order'))
 def process_order_callback(query):
@@ -327,32 +334,38 @@ def process_order_callback(query):
     id_ = int(data[-1])
     parent_id = int(data[-2])
     order_id = int(data[-3])
-    if (id_ == -2):
-        process_next_order_step(query.message.chat.id, order_id)
+    if (views.check_order(order_id) == -2 and order_id != 0):
+        bot.send_message(query.message.chat.id, text='Заказ удален!')
     else:
-        if (id_ == -1):
-            id_ = views.get_prev_level(parent_id)
-        items = views.get_immed_heirs(id_, False)
-        full_category = views.get_full_name_by_id(id_)
-        if (len(items) != 0):
-            markup = generate_markup(items, 'order', '', id_, order_id)
-            bot.send_message(query.message.chat.id,
-                    text='Выберите категорию: ' + full_category,
-                    reply_markup=markup)
+        if (id_ == -2):
+            process_next_order_step(query.message.chat.id, order_id)
         else:
-            if (id_ != 1):
-                try:
-                    if (order_id == 0):
-                        admin = views.get_admin()
-                        order_id = views.add_new_order(query.message.chat.id, admin)
-                        bot.send_message(admin, text='{} {} {}'.format('Заказ', order_id, 'начат!'))
-                    bot.send_message(query.message.chat.id, text=full_category)
-                    bot.send_message(query.message.chat.id, text='Введите количество:')
-                    bot.register_next_step_handler(query.message, order_amount, id_, full_category, order_id)
-                except OverflowError:
-                    bot.send_message(query.message.chat.id, text=sys.exc_info()[1])
+            if (id_ == -1):
+                id_ = views.get_prev_level(parent_id)
+            items = views.get_immed_heirs(id_, False)
+            full_category = views.get_full_name_by_id(id_)
+            if (len(items) != 0):
+                markup = generate_markup(items, 'order', '', id_, order_id)
+                bot.send_message(query.message.chat.id,
+                        text='Выберите категорию: ' + full_category,
+                        reply_markup=markup)
             else:
-                bot.send_message(query.message.chat.id, text='Товаров нет!')
+                if (id_ != 1):
+                    try:
+                        if (order_id == 0):
+                            admin = views.get_admin()
+                            order_id = views.add_new_order(query.message.chat.id, admin)
+                            text = '{} {} {}'.format('Заказ', order_id, 'начат!')
+                            bot.send_message(admin, text=text)
+                            bot.send_message(query.message.chat.id, text=text)
+                        check_timeout()
+                        bot.send_message(query.message.chat.id, text=full_category)
+                        bot.send_message(query.message.chat.id, text='Введите количество:')
+                        bot.register_next_step_handler(query.message, order_amount, id_, full_category, order_id)
+                    except OverflowError:
+                        bot.send_message(query.message.chat.id, text=sys.exc_info()[1])
+                else:
+                    bot.send_message(query.message.chat.id, text='Товаров нет!')
 
 @bot.message_handler(commands=['start', 'order'])
 def start(message):

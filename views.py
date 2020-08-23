@@ -8,14 +8,14 @@ def create_tables():
     database.connect()
     database.create_tables([Goods, Admins, Orders_Info, Orders_Content], safe=True)
     Goods.create(name = '.BASE_CAT', amount = 0)
-    brcls = Goods.create(name = 'Браслеты', amount = 100, parent_id = 1)
-    pins = Goods.create(name = 'Значки', amount = 75, parent_id = 1)
+    Goods.create(name = 'Браслеты', amount = 100, parent_id = 1)
+    Goods.create(name = 'Значки', amount = 75, parent_id = 1)
     Goods.create(name = 'Кружки', amount = 150, price = 100, parent_id = 1)
-    Goods.create(name = 'Синие', amount = 50, price = 10, parent_id = brcls)
-    Goods.create(name = 'Красные', amount = 36, price = 15, parent_id = brcls)
-    Goods.create(name = 'Желтые', amount = 14, price = 20, parent_id = brcls)
-    Goods.create(name = 'Жестяные', amount = 30, price = 17, parent_id = pins)
-    Goods.create(name = 'Деревянные', amount = 45, price = 13, parent_id = pins)
+    Goods.create(name = 'Синие', amount = 50, price = 10, parent_id = 2)
+    Goods.create(name = 'Красные', amount = 36, price = 15, parent_id = 2)
+    Goods.create(name = 'Желтые', amount = 14, price = 20, parent_id = 2)
+    Goods.create(name = 'Жестяные', amount = 30, price = 17, parent_id = 3)
+    Goods.create(name = 'Деревянные', amount = 45, price = 13, parent_id = 3)
     Admins.create(chat_id='1234')
     database.close()
 
@@ -72,7 +72,7 @@ def get_full_name_by_id(id_):
 
 def add(name_, amount_, parent_id_, price_):
     item = Goods.create(name = name_, amount = amount_, price = price_, parent_id = parent_id_)
-    if (amount_ != 0 and parent_id_ == 1):
+    if (amount_ != 0):
         update_amount(item.parent_id, amount_)
     return item.id
 
@@ -206,7 +206,9 @@ def check_timestamps():
     return message_info
 
 def cancel_by_id(id_, chat_id):
-    order = Orders_Info.select().where((Orders_Info.id == id_) & (Orders_Info.chat_id == chat_id))
+    order = Orders_Info.select().where((Orders_Info.id == id_) & 
+                                        (Orders_Info.chat_id == chat_id) &
+                                        (Orders_Info.status != 'CREATE'))
     if not order.exists():
         raise NameError('Не ваш заказ, ая-яй-яй!')
     query = Orders_Info.update({Orders_Info.status : 'DEL'}).where(Orders_Info.id == id_)
@@ -225,6 +227,8 @@ def get_order_items(id_, chat_id):
     return [[get_full_name_by_id(item.item_id), item.item_id, item.amount] for item in items]
 
 def erase_item_order_by_ids(id_, order_id):
+    query = Orders_Info.update({Orders_Info.time : time.time()}).where(Orders_Info.id == order_id)
+    query.execute()
     item = Orders_Content.select().where(Orders_Content.item_id == id_).where(Orders_Content.order_id == order_id)
     amount = item[0].amount
     update_amount(id_, amount)
@@ -245,8 +249,11 @@ def complete_order(id_):
 
 def check_order(order_id):
     items = Orders_Content.select().where(Orders_Content.order_id == order_id)
-    if (items.exists()):
-        return True
-    query = Orders_Info.update({Orders_Info.status : 'DEL'}).where(Orders_Info.id == order_id)
-    query.execute()
-    return False
+    order =  Orders_Info.select().where((Orders_Info.id == order_id) & (Orders_Info.status != 'DEL'))
+    if (not items.exists()):
+        query = Orders_Info.update({Orders_Info.status : 'DEL'}).where(Orders_Info.id == order_id)
+        query.execute()
+        return -1
+    if (not order.exists()):
+        return -2
+    return 0
