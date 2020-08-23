@@ -82,12 +82,22 @@ def generate_markup(variants, keyboard_type, stop_button, level, order_id=''):
     return markup
 
 
+@bot.callback_query_handler(lambda query: query.data.startswith('amount_item'))
+def process_amount_callback(query):
+    bot.answer_callback_query(query.id, text = None, show_alert = False)
+    bot.delete_message(query.message.chat.id, query.message.message_id)
+
+    data = query.data.split(sep='_')
+    id_ = int(data[-1])
+    parent_id = int(data[-2])
+    if (id_ == -1):
+        id_ = views.get_prev_level(parent_id)
+    change_amount_start(query.message, id_)
 
 @bot.callback_query_handler(lambda query: 
                         query.data.startswith('add_item') or
                         query.data.startswith('delete_item') or
                         query.data.startswith('name_item') or
-                        query.data.startswith('amount_item') or
                         query.data.startswith('items_all'))
 def process_callback(query):
     bot.answer_callback_query(query.id, text = None, show_alert = False)
@@ -114,9 +124,9 @@ def process_callback(query):
             category = views.get_full_name_by_id(parent_id)
             bot.send_message(query.message.chat.id, 'Введите новое наименование товара:')
             bot.register_next_step_handler(query.message, change_name, parent_id, category)
-        elif (query.data.startswith('amount_item')):
-            bot.send_message(query.message.chat.id, 'Введите новое количество товара:')
-            bot.register_next_step_handler(query.message, change_amount, parent_id)
+        #elif (query.data.startswith('amount_item')):
+         #   bot.send_message(query.message.chat.id, 'Введите новое количество товара:')
+          #  bot.register_next_step_handler(query.message, change_amount, parent_id)
         # elif (query.data.startswith('items_all')):
         #     bot.send_message(query.message.chat.id, 'Что еще поделаем?')
 
@@ -143,13 +153,11 @@ def process_command(message, command, level):
     add_properties = ['add_item', 'Новая категория', 'Выберите категорию:']
     delete_properties = ['delete_item', 'Удалить категорию', 'Выберите категорию для удаления:']
     name_properties = ['name_item', 'Изменить категорию', 'Выберите категорию для изменения:']
-    change_properties = ['amount_item', 'Изменить категорию', 'Выберите категорию для изменения:']
     items_properties = ['items_all', 'Завершить просмотр', 'Категория:']
     properties_ = {
         'add' : add_properties,
         'delete' : delete_properties,
         'name' : name_properties,
-        'amount' : change_properties,
         'items' : items_properties,
     }
     properties = properties_[command]
@@ -161,10 +169,27 @@ def process_command(message, command, level):
         message_ = properties[2] + views.get_full_name_by_id(level)
         bot.send_message(message.chat.id, text=message_, reply_markup=markup)
 
-@bot.message_handler(commands=['add', 'delete', 'name', 'amount', 'items'])
+@bot.message_handler(commands=['add', 'delete', 'name', 'items'])
 def get_command(message):
     if (views.check_id(str(message.chat.id))):
         process_command(message, message.text[1:], 1)
+    else:
+        bot.send_message(message.chat.id, text=message.text)
+
+@bot.message_handler(commands=['amount'])
+def change_amount_start(message, level = 1):
+    if (views.check_id(str(message.chat.id))):
+        properties = ['amount_item', '', 'Выберите категорию для изменения:']
+        all_items = views.get_immed_heirs(level)
+        if (level == 1 and len(all_items) == 0):
+            bot.send_message(message.chat.id, text='Товаров нет!')
+        elif (len(all_items) == 0):
+            bot.send_message(message.chat.id, 'Введите новое количество товара:')
+            bot.register_next_step_handler(message, change_amount, level)
+        else:
+            markup = generate_markup(all_items, properties[0], properties[1], level)
+            message_ = properties[2] + views.get_full_name_by_id(level)
+            bot.send_message(message.chat.id, text=message_, reply_markup=markup)
     else:
         bot.send_message(message.chat.id, text=message.text)
 
